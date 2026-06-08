@@ -20,21 +20,28 @@ export const VideoBackground: React.FC = () => {
       vx: number;
       vy: number;
       radius: number;
+      originalVx: number;
+      originalVy: number;
     }
 
     const nodes: Node[] = [];
-    // Adjust density based on screen resolution
-    const nodeCount = Math.min(80, Math.floor((width * height) / 15000));
+    const maxNodes = 150; // Cap to prevent performance drops
+    const initialNodeCount = Math.min(80, Math.floor((width * height) / 15000));
     const connectionDistance = 120;
     const mouse = { x: -1000, y: -1000, active: false };
+    const repulsionRadius = 120; // Distance within which particles are pushed
 
-    // Initialize random nodes with slow velocity for a premium, calm feel
-    for (let i = 0; i < nodeCount; i++) {
+    // Initialize nodes
+    for (let i = 0; i < initialNodeCount; i++) {
+      const vx = (Math.random() - 0.5) * 0.4;
+      const vy = (Math.random() - 0.5) * 0.4;
       nodes.push({
         x: Math.random() * width,
         y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: (Math.random() - 0.5) * 0.4,
+        vx: vx,
+        vy: vy,
+        originalVx: vx,
+        originalVy: vy,
         radius: Math.random() * 2 + 1,
       });
     }
@@ -42,15 +49,50 @@ export const VideoBackground: React.FC = () => {
     const draw = () => {
       ctx.clearRect(0, 0, width, height);
 
-      // Draw background text/grid if needed (optional minimalist layout style)
       // Update & Draw Nodes
       nodes.forEach((node) => {
+        // Apply physics if mouse is active and close
+        if (mouse.active) {
+          const dx = node.x - mouse.x;
+          const dy = node.y - mouse.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < repulsionRadius) {
+            // Calculate force: stronger when closer
+            const force = (repulsionRadius - dist) / repulsionRadius;
+            const angle = Math.atan2(dy, dx);
+            
+            // Push node away from mouse
+            node.x += Math.cos(angle) * force * 3;
+            node.y += Math.sin(angle) * force * 3;
+            
+            // Temporarily speed up the node's velocity
+            node.vx = Math.cos(angle) * 0.8;
+            node.vy = Math.sin(angle) * 0.8;
+          } else {
+            // Gradually return to original calm velocity
+            node.vx += (node.originalVx - node.vx) * 0.05;
+            node.vy += (node.originalVy - node.vy) * 0.05;
+          }
+        } else {
+          // Return to original calm velocity when mouse is away
+          node.vx += (node.originalVx - node.vx) * 0.05;
+          node.vy += (node.originalVy - node.vy) * 0.05;
+        }
+
+        // Apply velocities
         node.x += node.vx;
         node.y += node.vy;
 
         // Bounce off boundaries
-        if (node.x < 0 || node.x > width) node.vx *= -1;
-        if (node.y < 0 || node.y > height) node.vy *= -1;
+        if (node.x < 0 || node.x > width) {
+          node.vx *= -1;
+          node.originalVx *= -1;
+        }
+        if (node.y < 0 || node.y > height) {
+          node.vy *= -1;
+          node.originalVy *= -1;
+        }
 
         // Keep inside bounds
         if (node.x < 0) node.x = 0;
@@ -58,9 +100,10 @@ export const VideoBackground: React.FC = () => {
         if (node.y < 0) node.y = 0;
         if (node.y > height) node.y = height;
 
+        // Draw particle
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(111, 111, 111, 0.4)'; // Refined Gray #6F6F6F at low opacity
+        ctx.fillStyle = 'rgba(111, 111, 111, 0.4)';
         ctx.fill();
       });
 
@@ -90,7 +133,7 @@ export const VideoBackground: React.FC = () => {
 
           if (dist < connectionDistance + 50) {
             const alpha = (1 - dist / (connectionDistance + 50)) * 0.25;
-            ctx.strokeStyle = `rgba(0, 0, 0, ${alpha})`; // Darker line for mouse interactions
+            ctx.strokeStyle = `rgba(0, 0, 0, ${alpha})`;
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(nodes[i].x, nodes[i].y);
@@ -122,9 +165,38 @@ export const VideoBackground: React.FC = () => {
       mouse.y = -1000;
     };
 
+    // Click handler to spawn new temporary particles
+    const handleCanvasClick = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      
+      const spawnCount = 6;
+      for (let i = 0; i < spawnCount; i++) {
+        if (nodes.length < maxNodes) {
+          // Speed vectors for explosion effect
+          const angle = Math.random() * Math.PI * 2;
+          const speed = Math.random() * 1.5 + 0.5;
+          const vx = Math.cos(angle) * speed;
+          const vy = Math.sin(angle) * speed;
+          
+          nodes.push({
+            x: clickX,
+            y: clickY,
+            vx: vx,
+            vy: vy,
+            originalVx: vx * 0.2, // Drifts slowly after explosion
+            originalVy: vy * 0.2,
+            radius: Math.random() * 2 + 1,
+          });
+        }
+      }
+    };
+
     window.addEventListener('resize', handleResize);
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('mouseleave', handleMouseLeave);
+    canvas.addEventListener('click', handleCanvasClick);
 
     draw();
 
@@ -134,13 +206,14 @@ export const VideoBackground: React.FC = () => {
       if (canvas) {
         canvas.removeEventListener('mousemove', handleMouseMove);
         canvas.removeEventListener('mouseleave', handleMouseLeave);
+        canvas.removeEventListener('click', handleCanvasClick);
       }
     };
   }, []);
 
   return (
     <div 
-      className="absolute z-0 w-full overflow-hidden bg-white"
+      className="absolute z-0 w-full overflow-hidden bg-white cursor-pointer"
       style={{
         top: '300px',
         inset: 'auto 0 0 0',
