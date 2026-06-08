@@ -152,11 +152,21 @@ export const VideoBackground: React.FC = () => {
       height = canvas.height = canvas.offsetHeight;
     };
 
+    // Calculate mouse position relative to canvas even if pointer-events-none is enabled
     const handleMouseMove = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      mouse.x = e.clientX - rect.left;
-      mouse.y = e.clientY - rect.top;
-      mouse.active = true;
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      mouse.x = x;
+      mouse.y = y;
+      
+      // Active if within canvas bounds
+      if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+        mouse.active = true;
+      } else {
+        mouse.active = false;
+      }
     };
 
     const handleMouseLeave = () => {
@@ -165,55 +175,55 @@ export const VideoBackground: React.FC = () => {
       mouse.y = -1000;
     };
 
-    // Click handler to spawn new temporary particles
+    // Click handler to spawn new temporary particles relative to canvas
     const handleCanvasClick = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
       
-      const spawnCount = 6;
-      for (let i = 0; i < spawnCount; i++) {
-        if (nodes.length < maxNodes) {
-          // Speed vectors for explosion effect
-          const angle = Math.random() * Math.PI * 2;
-          const speed = Math.random() * 1.5 + 0.5;
-          const vx = Math.cos(angle) * speed;
-          const vy = Math.sin(angle) * speed;
-          
-          nodes.push({
-            x: clickX,
-            y: clickY,
-            vx: vx,
-            vy: vy,
-            originalVx: vx * 0.2, // Drifts slowly after explosion
-            originalVy: vy * 0.2,
-            radius: Math.random() * 2 + 1,
-          });
+      // Only spawn if click is inside canvas bounds
+      if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+        const spawnCount = 6;
+        for (let i = 0; i < spawnCount; i++) {
+          if (nodes.length < maxNodes) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 1.5 + 0.5;
+            const vx = Math.cos(angle) * speed;
+            const vy = Math.sin(angle) * speed;
+            
+            nodes.push({
+              x: x,
+              y: y,
+              vx: vx,
+              vy: vy,
+              originalVx: vx * 0.2,
+              originalVy: vy * 0.2,
+              radius: Math.random() * 2 + 1,
+            });
+          }
         }
       }
     };
 
     window.addEventListener('resize', handleResize);
-    canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('mouseleave', handleMouseLeave);
-    canvas.addEventListener('click', handleCanvasClick);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseleave', handleMouseLeave);
+    window.addEventListener('click', handleCanvasClick);
 
     draw();
 
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
-      if (canvas) {
-        canvas.removeEventListener('mousemove', handleMouseMove);
-        canvas.removeEventListener('mouseleave', handleMouseLeave);
-        canvas.removeEventListener('click', handleCanvasClick);
-      }
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseleave', handleMouseLeave);
+      window.removeEventListener('click', handleCanvasClick);
     };
   }, []);
 
   return (
     <div 
-      className="absolute z-0 w-full overflow-hidden bg-white cursor-pointer"
+      className="absolute z-0 w-full overflow-hidden bg-white pointer-events-none"
       style={{
         top: '300px',
         inset: 'auto 0 0 0',
