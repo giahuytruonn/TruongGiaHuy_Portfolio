@@ -1,81 +1,157 @@
 import React, { useEffect, useRef } from 'react';
 
 export const VideoBackground: React.FC = () => {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
     let animationFrameId: number;
+    let width = (canvas.width = canvas.offsetWidth);
+    let height = (canvas.height = canvas.offsetHeight);
 
-    const checkVideoTime = () => {
-      if (video && !isNaN(video.duration) && video.duration > 0) {
-        const currentTime = video.currentTime;
-        const duration = video.duration;
+    interface Node {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      radius: number;
+    }
 
-        let targetOpacity = 1;
+    const nodes: Node[] = [];
+    // Adjust density based on screen resolution
+    const nodeCount = Math.min(80, Math.floor((width * height) / 15000));
+    const connectionDistance = 120;
+    const mouse = { x: -1000, y: -1000, active: false };
 
-        if (currentTime < 0.5) {
-          // Fade in over 0.5s
-          targetOpacity = currentTime / 0.5;
-        } else if (currentTime > duration - 0.5) {
-          // Fade out over 0.5s before the end
-          targetOpacity = Math.max(0, (duration - currentTime) / 0.5);
+    // Initialize random nodes with slow velocity for a premium, calm feel
+    for (let i = 0; i < nodeCount; i++) {
+      nodes.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        radius: Math.random() * 2 + 1,
+      });
+    }
+
+    const draw = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      // Draw background text/grid if needed (optional minimalist layout style)
+      // Update & Draw Nodes
+      nodes.forEach((node) => {
+        node.x += node.vx;
+        node.y += node.vy;
+
+        // Bounce off boundaries
+        if (node.x < 0 || node.x > width) node.vx *= -1;
+        if (node.y < 0 || node.y > height) node.vy *= -1;
+
+        // Keep inside bounds
+        if (node.x < 0) node.x = 0;
+        if (node.x > width) node.x = width;
+        if (node.y < 0) node.y = 0;
+        if (node.y > height) node.y = height;
+
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(111, 111, 111, 0.4)'; // Refined Gray #6F6F6F at low opacity
+        ctx.fill();
+      });
+
+      // Draw Connection Lines
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[i].x - nodes[j].x;
+          const dy = nodes[i].y - nodes[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < connectionDistance) {
+            const alpha = (1 - dist / connectionDistance) * 0.15;
+            ctx.strokeStyle = `rgba(111, 111, 111, ${alpha})`;
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(nodes[i].x, nodes[i].y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.stroke();
+          }
         }
 
-        // Apply opacity directly to the element style for smooth performance
-        video.style.opacity = String(targetOpacity);
+        // Draw interactive connection to user mouse pointer
+        if (mouse.active) {
+          const dx = nodes[i].x - mouse.x;
+          const dy = nodes[i].y - mouse.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < connectionDistance + 50) {
+            const alpha = (1 - dist / (connectionDistance + 50)) * 0.25;
+            ctx.strokeStyle = `rgba(0, 0, 0, ${alpha})`; // Darker line for mouse interactions
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(nodes[i].x, nodes[i].y);
+            ctx.lineTo(mouse.x, mouse.y);
+            ctx.stroke();
+          }
+        }
       }
-      animationFrameId = requestAnimationFrame(checkVideoTime);
+
+      animationFrameId = requestAnimationFrame(draw);
     };
 
-    animationFrameId = requestAnimationFrame(checkVideoTime);
-
-    const handleEnded = () => {
-      // Set opacity to 0 on ended event
-      video.style.opacity = '0';
-      
-      // Wait 100ms, reset to 0, then play again
-      setTimeout(() => {
-        if (video) {
-          video.currentTime = 0;
-          video.play().catch((err) => {
-            console.log("Browser auto-play restriction or play interrupted:", err);
-          });
-        }
-      }, 100);
+    const handleResize = () => {
+      if (!canvas) return;
+      width = canvas.width = canvas.offsetWidth;
+      height = canvas.height = canvas.offsetHeight;
     };
 
-    video.addEventListener('ended', handleEnded);
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+      mouse.active = true;
+    };
+
+    const handleMouseLeave = () => {
+      mouse.active = false;
+      mouse.x = -1000;
+      mouse.y = -1000;
+    };
+
+    window.addEventListener('resize', handleResize);
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseleave', handleMouseLeave);
+
+    draw();
 
     return () => {
       cancelAnimationFrame(animationFrameId);
-      if (video) {
-        video.removeEventListener('ended', handleEnded);
+      window.removeEventListener('resize', handleResize);
+      if (canvas) {
+        canvas.removeEventListener('mousemove', handleMouseMove);
+        canvas.removeEventListener('mouseleave', handleMouseLeave);
       }
     };
   }, []);
 
   return (
     <div 
-      className="absolute z-0 pointer-events-none w-full overflow-hidden"
+      className="absolute z-0 w-full overflow-hidden bg-white"
       style={{
         top: '300px',
         inset: 'auto 0 0 0',
         height: 'calc(100% - 300px)'
       }}
     >
-      <video
-        ref={videoRef}
-        src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_083109_283f3553-e28f-428b-a723-d639c617eb2b.mp4"
-        muted
-        playsInline
-        autoPlay
-        className="w-full h-full object-cover"
-        style={{ opacity: 0 }}
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full block bg-white"
       />
-      {/* Gradient Overlay: bg-gradient-to-b from-background via-transparent to-background */}
+      {/* Gradient Overlay blending with page background */}
       <div className="absolute inset-0 bg-gradient-to-b from-background via-transparent to-background pointer-events-none" />
     </div>
   );
